@@ -16,6 +16,8 @@ import base64
 import sys
 import ssl
 from goprocam import exceptions
+import logging
+import datetime
 
 
 class GoPro:
@@ -56,10 +58,20 @@ class GoPro:
         except AssertionError:
             raise Exception("expected ['\{\}'] - found ['%s']" % input)
 
-    def __init__(self, camera="detect", ip_address="10.5.5.9", mac_address="AA:BB:CC:DD:EE:FF", debug=True, timeout=5, webcam_device="usb0", api_type=constants.ApiServerType.SMARTY):
+    def __init__(self, camera="detect", ip_address="10.5.5.9", mac_address="AA:BB:CC:DD:EE:FF", debug=True, timeout=5,
+                 webcam_device="usb0", api_type=constants.ApiServerType.SMARTY, logging_level="CRITICAL",
+                 logging_flag=False):
         if sys.version_info[0] < 3:
             print("Needs Python v3, run again on a virtualenv or install Python 3")
             exit()
+
+        # Logging setup:
+
+        self.log_fie = f"log{datetime.datetime.now()}" if logging_flag else None
+        self._logging = self.getLogging(logging_level)
+
+        # Main setup:
+
         self.ip_addr = ip_address
         self._camera = ""
         self._camera_model_name = ""
@@ -92,6 +104,13 @@ class GoPro:
 
     def __str__(self):
         return str(self.infoCamera())
+
+    def getLogging(self, level):
+        logging_level = getattr(logging, level.upper(), None)
+        logging.basicConfig(filename=self.log_fie, level=logging_level,
+                            format='\n%(asctime)s - %(levelname)s - %(message)s')
+        return logging
+
 
     def KeepAlive(self):
         """Sends keep alive packet"""
@@ -157,10 +176,13 @@ class GoPro:
         elif param == "" and value == "":
             uri = "%s%s/%s" % ("https://" if _isHTTPS else "http://",
                                self.ip_addr + (":8080" if path == "gp/gpMediaList" and self._camera == constants.Camera.Interface.Auth else ""), path)
+        self._logging.debug(f"uri: {uri}")
         if self._camera == constants.Camera.Interface.Auth:
-            return urllib.request.urlopen(uri, timeout=_timeout, context=_context).read()
+            respond = urllib.request.urlopen(uri, timeout=_timeout, context=_context).read()
         else:
-            return urllib.request.urlopen(uri, timeout=_timeout, context=_context).read().decode("utf-8")
+            respond = urllib.request.urlopen(uri, timeout=_timeout, context=_context).read().decode("utf-8")
+        self._logging.debug(f"respond: {respond}")
+        return respond
 
     def gpControlSet(self, param, value):
         """sends Parameter and value to gpControl/setting"""
